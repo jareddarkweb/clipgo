@@ -1,0 +1,98 @@
+package main
+
+import (
+	"fmt"
+	"log"
+	"os"
+	"os/exec"
+)
+
+func main() {
+	videoURL := "https://www.youtube.com/watch?v=YOUR_VIDEO_ID"
+	outputDir := "./output"
+
+	// Download the YouTube video
+	err := downloadVideo(videoURL, outputDir)
+	if err != nil {
+		log.Fatal("Failed to download the video:", err)
+	}
+
+	// Define the clips and their timestamps
+	clips := []Clip{
+		{Start: "00:00:10", End: "00:00:20", Caption: "First clip", Emoji: "🔥"},
+		{Start: "00:01:30", End: "00:01:40", Caption: "Second clip", Emoji: "🌟"},
+		{Start: "00:02:50", End: "00:03:00", Caption: "Third clip", Emoji: "💥"},
+	}
+
+	// Process each clip
+	for i, clip := range clips {
+		clipPath := fmt.Sprintf("%s/clip%d.mp4", outputDir, i+1)
+
+		// Extract the clip from the downloaded video
+		err = extractClip(clipPath, videoURL, clip.Start, clip.End)
+		if err != nil {
+			log.Fatal("Failed to extract clip:", err)
+		}
+
+		// Add captions and emojis to the clip
+		err = addCaptionAndEmoji(clipPath, clip.Caption, clip.Emoji)
+		if err != nil {
+			log.Fatal("Failed to add caption and emoji:", err)
+		}
+
+		fmt.Println("Clip", i+1, "processed successfully.")
+	}
+}
+
+// Clip represents a video clip with start and end timestamps,
+// and caption and emoji to be added.
+type Clip struct {
+	Start   string
+	End     string
+	Caption string
+	Emoji   string
+}
+
+// Download the YouTube video using youtube-dl command.
+func downloadVideo(videoURL, outputDir string) error {
+	cmd := exec.Command("youtube-dl", "-o", outputDir+"/video.mp4", videoURL)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// Extract a clip from the video using ffmpeg command.
+func extractClip(outputPath, videoURL, start, end string) error {
+	cmd := exec.Command("ffmpeg", "-ss", start, "-i", videoURL, "-to", end, "-c", "copy", outputPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// Add captions and emojis to the clip using ffmpeg command.
+func addCaptionAndEmoji(inputPath, caption, emoji string) error {
+	outputPath := fmt.Sprintf("%s_captioned.mp4", inputPath)
+
+	// Add caption
+	captionCmd := exec.Command("ffmpeg", "-i", inputPath, "-vf", fmt.Sprintf("drawtext=text='%s':x=(w-text_w)/2:y=(h-text_h)/2:fontsize=24:fontcolor=white:box=1:boxcolor=black@0.5", caption), "-codec:a", "copy", outputPath)
+	captionCmd.Stdout = os.Stdout
+	captionCmd.Stderr = os.Stderr
+	if err := captionCmd.Run(); err != nil {
+		return err
+	}
+
+	// Add emoji overlay
+	emojiCmd := exec.Command("ffmpeg", "-i", outputPath, "-i", "emoji.png", "-filter_complex", "overlay=W-w-10:H-h-10", "-codec:a", "copy", inputPath)
+	emojiCmd.Stdout = os.Stdout
+	emojiCmd.Stderr = os.Stderr
+	if err := emojiCmd.Run(); err != nil {
+		return err
+	}
+
+	// Remove the intermediate file
+	if err := os.Remove(outputPath); err != nil {
+		return err
+	}
+
+	return nil
+}
